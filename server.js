@@ -8,7 +8,6 @@ import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { URL } from 'url';
-import { createProxyMiddleware } from express-http-proxy';
 
 dotenv.config();
 
