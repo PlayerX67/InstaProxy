@@ -1,10 +1,10 @@
 self.__proxy$config = {
-  prefix: '/service/',
+  prefix: '/scramjet/',
   encodeUrl: function(url) {
-    return btoa(url); // Base64 encode snippet from Scramjet
+    return Buffer.from(url).toString('base64');  // Node-style base64 for consistency
   },
   decodeUrl: function(encoded) {
-    return atob(encoded); // Base64 decode
+    return Buffer.from(encoded, 'base64').toString();
   },
   handler: '/proxy.handler.js',
   client: '/proxy.client.js',
