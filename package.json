@@ -1,17 +1,16 @@
+// package.json
 {
-  "name": "website-fetcher-proxy",
+  "name": "website-fetcher",
   "version": "1.0.0",
-  "description": "Beautiful web proxy – Render ready",
-  "main": "server.js",
+  "description": "A high-fidelity website fetcher using Headless Chrome",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js",
+    "build": "echo 'Build complete'"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "unblocker": "^2.3.0"
-  },
-  "engines": {
-    "node": ">=18.x"
-  },
-  "license": "AGPL-3.0"
+    "express": "^4.18.2",
+    "puppeteer": "^21.0.0",
+    "cors": "^2.8.5"
+  }
 }
