@@ -98,7 +98,17 @@ app.post('/api/render', async (req, res) => {
       console.warn('Navigation warning:', navError.message);
     }
 
-    await page.waitForTimeout(2000);
+    async function waitForDelay(page, ms) {
+      return page.evaluate((delay) => {
+        return new Promise(resolve => setTimeout(resolve, delay));
+      }, ms);
+    }
+
+// Then use it as:
+await waitForDelay(page, 2000);
+
+// Then use it as:
+await waitForDelay(page, 2000);
 
     const metrics = await page.metrics();
     const screenshot = await page.screenshot({ type: 'png', fullPage: true });
