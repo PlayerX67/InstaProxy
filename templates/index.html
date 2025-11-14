@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Fetcher</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 Website Fetcher</h1>
+            <p>Enter any URL to fetch and open it with full rendering</p>
+        </div>
+        
+        <div class="input-section">
+            <input type="text" id="urlInput" placeholder="https://example.com" />
+            <button onclick="fetchWebsite()">Fetch & Open Website</button>
+        </div>
+        
+        <div class="info">
+            <p><strong>Features:</strong></p>
+            <ul>
+                <li>Google-level rendering with Chromium</li>
+                <li>JavaScript execution</li>
+                <li>Full CSS styling</li>
+                <li>Dynamic content loading</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function fetchWebsite() {
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+            
+            // Show loading state
+            const button = document.querySelector('button');
+            const originalText = button.textContent;
+            button.textContent = 'Fetching...';
+            button.disabled = true;
+            
+            // Open new tab immediately
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write(`
+                    <html>
+                        <head><title>Loading...</title></head>
+                        <body>
+                            <div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial;">
+                                <div style="text-align: center;">
+                                    <h2>Loading website...</h2>
+                                    <p>Please wait while we fetch ${url}</p>
+                                </div>
+                            </div>
+                        </body>
+                    </html>
+                `);
+            }
+            
+            // Fetch the rendered website
+            fetch(`/fetch?url=${encodeURIComponent(url)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text) });
+                    }
+                    return response.text();
+                })
+                .then(html => {
+                    if (newTab) {
+                        newTab.document.open();
+                        newTab.document.write(html);
+                        newTab.document.close();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    if (newTab) {
+                        newTab.document.open();
+                        newTab.document.write(`
+                            <html>
+                                <body>
+                                    <h2>Error fetching website</h2>
+                                    <p>${error.message}</p>
+                                    <button onclick="window.close()">Close</button>
+                                </body>
+                            </html>
+                        `);
+                        newTab.document.close();
+                    }
+                    alert('Failed to fetch website: ' + error.message);
+                })
+                .finally(() => {
+                    // Reset button
+                    button.textContent = originalText;
+                    button.disabled = false;
+                });
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                fetchWebsite();
+            }
+        });
+    </script>
+</body>
+</html>
