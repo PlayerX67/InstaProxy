@@ -17,6 +17,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// User agents for different browser scenarios
+const USER_AGENTS = {
+  chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  firefox: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+  safari: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+  googlebot: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+};
+
 // Middleware
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -25,6 +33,7 @@ app.use(helmet({
 app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Store for cached pages and browser instance
@@ -46,6 +55,7 @@ async function initBrowser() {
         '--no-default-browser-check',
         '--disable-default-apps',
         '--disable-extensions',
+        '--disable-blink-features=AutomationControlled',
       ],
       timeout: 30000,
     });
@@ -63,73 +73,183 @@ function isValidUrl(urlString) {
   }
 }
 
+// Convert relative URL to absolute
+function resolveUrl(relativeUrl, baseUrl) {
+  if (!relativeUrl) return baseUrl;
+  if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
+    return relativeUrl;
+  }
+  
+  const base = new URL(baseUrl);
+  if (relativeUrl.startsWith('//')) {
+    return base.protocol + relativeUrl;
+  }
+  if (relativeUrl.startsWith('/')) {
+    return base.protocol + '//' + base.host + relativeUrl;
+  }
+  
+  return base.protocol + '//' + base.host + base.pathname.replace(/\/[^/]*$/, '/') + relativeUrl;
+}
+
 // Rewrite URLs in HTML to go through proxy
 function rewriteUrls(html, originalUrl, proxyBaseUrl) {
   const originalHost = new URL(originalUrl).hostname;
   
-  // Rewrite protocol-relative URLs
-  html = html.replace(/href="\/\//g, `href="${new URL(originalUrl).protocol}//`);
-  html = html.replace(/src="\/\//g, `src="${new URL(originalUrl).protocol}//`);
-  
-  // Rewrite relative URLs to absolute
-  const originalBase = new URL(originalUrl);
-  const baseHref = `${originalBase.protocol}//${originalBase.host}`;
-  
-  // Add base tag if not present
+  // Add base tag for relative URL resolution
+  const baseTag = `<base href="${originalUrl}">`;
   if (!html.includes('<base')) {
-    html = html.replace('</head>', `<base href="${baseHref}/">\n</head>`);
+    html = html.replace(/<head[^>]*>/i, (match) => {
+      return match + '\n' + baseTag;
+    });
+    if (!html.includes('<head')) {
+      html = baseTag + html;
+    }
   }
   
-  // Rewrite form actions
-  html = html.replace(/action="([^"]*?)"/g, (match, actionUrl) => {
-    if (actionUrl.startsWith('http')) {
-      return `action="${proxyBaseUrl}/api/proxy-request?url=${encodeURIComponent(actionUrl)}"`;
-    } else if (actionUrl.startsWith('/')) {
-      return `action="${proxyBaseUrl}/api/proxy-request?url=${encodeURIComponent(baseHref + actionUrl)}"`;
-    }
-    return match;
+  // Rewrite script src
+  html = html.replace(/(<script[^>]+src=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, srcUrl, suffix) => {
+    if (srcUrl.includes('blob:') || srcUrl.includes('data:')) return match;
+    const resolved = resolveUrl(srcUrl, originalUrl);
+    return `${prefix}${proxyBaseUrl}/api/proxy-asset?url=${encodeURIComponent(resolved)}${suffix}`;
   });
 
-  // Inject proxy script for XHR/Fetch
+  // Rewrite link href
+  html = html.replace(/(<link[^>]+href=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, hrefUrl, suffix) => {
+    if (hrefUrl.includes('blob:') || hrefUrl.includes('data:')) return match;
+    const resolved = resolveUrl(hrefUrl, originalUrl);
+    return `${prefix}${proxyBaseUrl}/api/proxy-asset?url=${encodeURIComponent(resolved)}${suffix}`;
+  });
+
+  // Rewrite img src
+  html = html.replace(/(<img[^>]+src=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, imgUrl, suffix) => {
+    if (imgUrl.includes('blob:') || imgUrl.includes('data:')) return match;
+    const resolved = resolveUrl(imgUrl, originalUrl);
+    return `${prefix}${proxyBaseUrl}/api/proxy-asset?url=${encodeURIComponent(resolved)}${suffix}`;
+  });
+
+  // Rewrite source src (for video/audio)
+  html = html.replace(/(<source[^>]+src=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, sourceUrl, suffix) => {
+    if (sourceUrl.includes('blob:') || sourceUrl.includes('data:')) return match;
+    const resolved = resolveUrl(sourceUrl, originalUrl);
+    return `${prefix}${proxyBaseUrl}/api/proxy-asset?url=${encodeURIComponent(resolved)}${suffix}`;
+  });
+
+  // Rewrite form action
+  html = html.replace(/(<form[^>]+action=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, actionUrl, suffix) => {
+    const resolved = resolveUrl(actionUrl, originalUrl);
+    return `${prefix}${proxyBaseUrl}/api/proxy-request?url=${encodeURIComponent(resolved)}${suffix}`;
+  });
+
+  // Rewrite iframe src
+  html = html.replace(/(<iframe[^>]+src=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, iframeUrl, suffix) => {
+    if (iframeUrl.includes('blob:') || iframeUrl.includes('data:')) return match;
+    const resolved = resolveUrl(iframeUrl, originalUrl);
+    return `${prefix}${proxyBaseUrl}/api/proxy-html?url=${encodeURIComponent(resolved)}${suffix}`;
+  });
+
+  // Rewrite inline styles with url()
+  html = html.replace(/url\(["']?(?!(?:blob|data):)([^"')]+)["']?\)/gi, (match, styleUrl) => {
+    const resolved = resolveUrl(styleUrl, originalUrl);
+    return `url(${proxyBaseUrl}/api/proxy-asset?url=${encodeURIComponent(resolved)})`;
+  });
+
+  // Remove CSP headers
+  html = html.replace(/<meta[^>]+http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '');
+
+  // Inject comprehensive proxy script
   const proxyScript = `
     <script>
       (function() {
-        const originalFetch = window.fetch;
-        const originalXHR = XMLHttpRequest.prototype.open;
         const proxyBase = '${proxyBaseUrl}';
+        const originalUrl = '${originalUrl.replace(/'/g, "\\'")}';
         
-        window.fetch = function(...args) {
-          let url = args[0];
-          if (typeof url === 'string' && !url.includes('${proxyBaseUrl}')) {
-            if (!url.startsWith('http')) {
-              url = window.location.origin + (url.startsWith('/') ? '' : '/') + url;
+        // Override fetch
+        const originalFetch = window.fetch;
+        window.fetch = function(resource, config = {}) {
+          let url = typeof resource === 'string' ? resource : resource.url;
+          
+          if (url && typeof url === 'string' && !url.includes(proxyBase) && !url.startsWith('blob:') && !url.startsWith('data:')) {
+            try {
+              const resolved = new URL(url, originalUrl).href;
+              if (!resolved.includes(proxyBase)) {
+                url = proxyBase + '/api/proxy-asset?url=' + encodeURIComponent(resolved);
+              }
+            } catch (e) {
+              console.warn('Failed to resolve URL:', url, e);
             }
-            args[0] = proxyBase + '/api/proxy-request?url=' + encodeURIComponent(url);
           }
-          return originalFetch.apply(this, args);
+          
+          if (typeof resource === 'string') {
+            return originalFetch(url, config);
+          } else {
+            return originalFetch(Object.assign(new Request(url), resource), config);
+          }
         };
 
+        // Override XMLHttpRequest
+        const originalOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-          if (typeof url === 'string' && !url.includes('${proxyBaseUrl}')) {
-            if (!url.startsWith('http')) {
-              url = window.location.origin + (url.startsWith('/') ? '' : '/') + url;
+          if (url && typeof url === 'string' && !url.includes(proxyBase) && !url.startsWith('blob:') && !url.startsWith('data:')) {
+            try {
+              const resolved = new URL(url, originalUrl).href;
+              if (!resolved.includes(proxyBase)) {
+                url = proxyBase + '/api/proxy-asset?url=' + encodeURIComponent(resolved);
+              }
+            } catch (e) {
+              console.warn('Failed to resolve URL:', url, e);
             }
-            url = proxyBase + '/api/proxy-request?url=' + encodeURIComponent(url);
           }
-          return originalXHR.apply(this, [method, url, ...rest]);
+          return originalOpen.apply(this, [method, url, ...rest]);
         };
+
+        // Handle relative links
+        document.addEventListener('click', function(e) {
+          const link = e.target.closest('a[href]');
+          if (link && link.href) {
+            const href = link.getAttribute('href');
+            if (href && !href.startsWith('javascript:') && !href.startsWith('mailto:') && !href.startsWith('#')) {
+              try {
+                const resolved = new URL(href, originalUrl).href;
+                if (!resolved.includes(proxyBase) && (resolved.startsWith('http://') || resolved.startsWith('https://'))) {
+                  e.preventDefault();
+                  window.location.href = proxyBase + '/api/proxy-html?url=' + encodeURIComponent(resolved);
+                }
+              } catch (e) {
+                console.warn('Failed to handle link:', href, e);
+              }
+            }
+          }
+        }, true);
+
+        // Block form submissions to external sites
+        document.addEventListener('submit', function(e) {
+          const form = e.target;
+          const action = form.getAttribute('action');
+          if (action && !action.includes(proxyBase) && !action.startsWith('javascript:')) {
+            try {
+              const resolved = new URL(action, originalUrl).href;
+              form.action = proxyBase + '/api/proxy-request?url=' + encodeURIComponent(resolved);
+            } catch (e) {
+              console.warn('Failed to handle form:', action, e);
+            }
+          }
+        }, true);
       })();
     </script>
   `;
   
-  html = html.replace('</head>', proxyScript + '\n</head>');
+  if (html.includes('</head>')) {
+    html = html.replace('</head>', proxyScript + '\n</head>');
+  } else {
+    html = proxyScript + html;
+  }
   
   return html;
 }
 
-// Main interactive rendering endpoint
+// Main rendering endpoint
 app.post('/api/render', async (req, res) => {
-  const { url, waitUntil = 'networkidle2' } = req.body;
+  const { url, waitUntil = 'networkidle2', userAgent = 'chrome' } = req.body;
 
   if (!url || !isValidUrl(url)) {
     return res.status(400).json({ error: 'Invalid URL provided' });
@@ -140,46 +260,42 @@ app.post('/api/render', async (req, res) => {
     const browserInstance = await initBrowser();
     page = await browserInstance.newPage();
 
-    // Set viewport for consistent rendering
     await page.setViewport({ width: 1920, height: 1080 });
 
-    // Set user agent
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    );
+    const ua = USER_AGENTS[userAgent] || USER_AGENTS.chrome;
+    await page.setUserAgent(ua);
 
-    // Request interception to handle all resources
-    await page.on('response', async (response) => {
-      try {
-        await response.buffer();
-      } catch (e) {
-        // Silently ignore errors
-      }
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'DNT': '1',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
     });
 
-    // Navigate to URL
-    await page.goto(url, {
-      waitUntil: waitUntil,
-      timeout: 30000,
-    });
+    try {
+      await page.goto(url, {
+        waitUntil: waitUntil,
+        timeout: 30000,
+      });
+    } catch (navError) {
+      console.warn('Navigation error (non-fatal):', navError.message);
+    }
 
-    // Get page metrics
+    try {
+      await page.waitForTimeout(2000);
+    } catch (e) {
+      // Ignore
+    }
+
     const metrics = await page.metrics();
-    
-    // Capture screenshot
-    const screenshot = await page.screenshot({
-      type: 'png',
-      fullPage: true,
-    });
-
-    // Get HTML content
+    const screenshot = await page.screenshot({ type: 'png', fullPage: true });
     let html = await page.content();
     
-    // Rewrite URLs in HTML
     const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;
     html = rewriteUrls(html, url, proxyBaseUrl);
 
-    // Get page metadata
     const title = await page.title();
     const finalUrl = page.url();
 
@@ -197,9 +313,7 @@ app.post('/api/render', async (req, res) => {
       },
     };
 
-    // Cache result for 1 hour
     pageCache.set(url, { data: result, timestamp: Date.now() });
-
     res.json(result);
   } catch (error) {
     console.error('Rendering error:', error);
@@ -214,7 +328,7 @@ app.post('/api/render', async (req, res) => {
   }
 });
 
-// Proxy endpoint for HTML
+// Proxy HTML endpoint
 app.get('/api/proxy-html', async (req, res) => {
   const { url } = req.query;
 
@@ -226,21 +340,31 @@ app.get('/api/proxy-html', async (req, res) => {
     const response = await axios.get(url, {
       timeout: 15000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': USER_AGENTS.chrome,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': new URL(url).origin + '/',
       },
-      maxRedirects: 5,
+      maxRedirects: 10,
       validateStatus: () => true,
+      decompress: true,
     });
 
     let html = response.data;
+    const finalUrl = response.request.res.responseUrl || url;
     const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;
-    html = rewriteUrls(html, response.request.res.responseUrl || url, proxyBaseUrl);
+    
+    html = rewriteUrls(html, finalUrl, proxyBaseUrl);
 
     res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('X-Content-Type-Options', 'nosniff');
     res.send(html);
   } catch (error) {
-    console.error('Proxy HTML error:', error);
+    console.error('Proxy HTML error:', error.message);
     res.status(500).json({
       error: 'Failed to fetch website',
       message: error.message,
@@ -248,7 +372,64 @@ app.get('/api/proxy-html', async (req, res) => {
   }
 });
 
-// Proxy endpoint for all requests (resources, XHR, etc.)
+// Proxy assets
+app.get('/api/proxy-asset', async (req, res) => {
+  const { url } = req.query;
+
+  if (!url || !isValidUrl(url)) {
+    return res.status(400).json({ error: 'Invalid URL provided' });
+  }
+
+  try {
+    const response = await axios.get(url, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': USER_AGENTS.chrome,
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+      },
+      maxRedirects: 5,
+      validateStatus: () => true,
+      responseType: 'arraybuffer',
+      decompress: true,
+    });
+
+    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('X-Content-Type-Options', 'nosniff');
+    
+    // Rewrite CSS
+    if (contentType.includes('text/css')) {
+      let css = Buffer.from(response.data).toString('utf-8');
+      const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;
+      
+      css = css.replace(/url\(["']?(?!(?:blob|data|http):)([^"')]+)["']?\)/gi, (match, styleUrl) => {
+        try {
+          const resolved = new URL(styleUrl, url).href;
+          return `url(${proxyBaseUrl}/api/proxy-asset?url=${encodeURIComponent(resolved)})`;
+        } catch (e) {
+          return match;
+        }
+      });
+      
+      res.send(Buffer.from(css));
+    } else {
+      res.send(response.data);
+    }
+  } catch (error) {
+    console.error('Proxy asset error:', error.message);
+    res.status(502).set('Content-Type', 'application/json').json({
+      error: 'Failed to proxy asset',
+      message: error.message,
+    });
+  }
+});
+
+// Proxy requests (forms, XHR)
 app.all('/api/proxy-request', async (req, res) => {
   const { url } = req.query;
 
@@ -260,30 +441,47 @@ app.all('/api/proxy-request', async (req, res) => {
     const config = {
       timeout: 10000,
       headers: {
-        ...req.headers,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': USER_AGENTS.chrome,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
       },
       maxRedirects: 5,
       validateStatus: () => true,
-      responseType: 'arraybuffer',
     };
 
-    // Remove host header to avoid conflicts
-    delete config.headers.host;
+    const forwardHeaders = ['content-type', 'content-length'];
+    forwardHeaders.forEach(header => {
+      if (req.headers[header]) {
+        config.headers[header] = req.headers[header];
+      }
+    });
 
     const response = await axios({
       method: req.method.toLowerCase(),
       url,
       data: req.body,
       ...config,
+      responseType: 'arraybuffer',
     });
 
-    // Set response headers from proxied request
-    res.set('Content-Type', response.headers['content-type'] || 'application/octet-stream');
-    res.set('Cache-Control', response.headers['cache-control'] || 'no-cache');
+    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    
+    res.set('Content-Type', contentType);
     res.set('Access-Control-Allow-Origin', '*');
-
-    res.send(response.data);
+    
+    if (contentType.includes('text/html')) {
+      let html = Buffer.from(response.data).toString('utf-8');
+      const finalUrl = response.request.res.responseUrl || url;
+      const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;
+      html = rewriteUrls(html, finalUrl, proxyBaseUrl);
+      res.send(html);
+    } else {
+      res.send(response.data);
+    }
   } catch (error) {
     console.error('Proxy request error:', error.message);
     res.status(502).json({
@@ -298,7 +496,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Serve index.html for all other routes (SPA)
+// Serve index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
