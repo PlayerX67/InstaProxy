@@ -1,3 +1,18 @@
-"scripts": {
-  "start": "node server.js"
+{
+  "name": "web-proxy-with-frontend",
+  "version": "1.0.0",
+  "description": "A web proxy with frontend interface for Render",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "http-proxy-middleware": "^2.0.6",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
