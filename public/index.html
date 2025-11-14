@@ -6,27 +6,11 @@
   <title>Website Fetcher</title>
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
   <style>
-    body {
-      background-color: #f8f9fa;
-      font-family: 'Arial', sans-serif;
-    }
-    .container {
-      max-width: 600px;
-      margin-top: 150px;
-    }
-    h1 {
-      color: #343a40;
-      margin-bottom: 30px;
-    }
-    .input-group {
-      margin-bottom: 20px;
-    }
-    #url {
-      border-radius: 0;
-    }
-    button {
-      border-radius: 0;
-    }
+    body{background:#f8f9fa;font-family:Arial,sans-serif}
+    .container{max-width:600px;margin-top:150px}
+    h1{color:#343a40;margin-bottom:30px}
+    #url{border-radius:0}
+    button{border-radius:0}
   </style>
 </head>
 <body>
@@ -35,25 +19,18 @@
     <div class="input-group">
       <input type="text" id="url" class="form-control" placeholder="Enter URL (e.g., https://example.com)">
       <div class="input-group-append">
-        <button class="btn btn-primary" onclick="openUrl()">Fetch & Open</button>
+        <button class="btn btn-primary" onclick="openUrl()">Fetch &amp; Open</button>
       </div>
     </div>
   </div>
 
   <script>
     function openUrl() {
-      const urlInput = document.getElementById('url');
-      let url = urlInput.value.trim();
-      if (!url) {
-        alert('Please enter a valid URL');
-        return;
-      }
-      // Ensure URL starts with http:// or https://
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://' + url;
-      }
+      let url = document.getElementById('url').value.trim();
+      if (!url) return alert('Enter a URL');
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
       window.open('/proxy/' + url, '_blank');
-      urlInput.value = ''; // Clear input after opening
+      document.getElementById('url').value = '';
     }
   </script>
 </body>
