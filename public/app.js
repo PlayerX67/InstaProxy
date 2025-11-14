@@ -82,6 +82,10 @@ class WebsiteFetcher {
               <span class="action-btn-icon">📸</span>
               Download Screenshot
             </button>
+            <button class="action-btn" id="openFullPageBtn">
+              <span class="action-btn-icon">🌍</span>
+              View Full Page
+            </button>
             <button class="action-btn" id="htmlBtn">
               <span class="action-btn-icon">📄</span>
               View HTML
@@ -107,8 +111,8 @@ class WebsiteFetcher {
           <div class="empty-icon">🌍</div>
           <div class="empty-title">Website Fetcher</div>
           <div class="empty-description">
-            Enter any URL above to fetch and render websites with Google-level rendering quality.
-            Perfect for previewing, testing, and analyzing web pages.
+            Enter any URL above to fetch and render websites with full interactivity and functionality.
+            Everything works perfectly—forms, scripts, navigation, and more.
           </div>
         </div>
       `;
@@ -120,7 +124,7 @@ class WebsiteFetcher {
           <div class="loading-spinner"></div>
           <div class="loading-text">
             <p>Rendering website...</p>
-            <p style="font-size: 12px;">Using headless Chrome for pixel-perfect rendering</p>
+            <p style="font-size: 12px;">Loading with full interactivity</p>
           </div>
         </div>
       `;
@@ -148,6 +152,7 @@ class WebsiteFetcher {
     const openNewTabBtn = document.getElementById('openNewTabBtn');
     const copyUrlBtn = document.getElementById('copyUrlBtn');
     const screenshotBtn = document.getElementById('screenshotBtn');
+    const openFullPageBtn = document.getElementById('openFullPageBtn');
     const htmlBtn = document.getElementById('htmlBtn');
     const refreshBtn = document.getElementById('refreshBtn');
     const clearBtn = document.getElementById('clearBtn');
@@ -178,6 +183,10 @@ class WebsiteFetcher {
 
     if (screenshotBtn) {
       screenshotBtn.addEventListener('click', () => this.downloadScreenshot());
+    }
+
+    if (openFullPageBtn) {
+      openFullPageBtn.addEventListener('click', () => this.openFullPage());
     }
 
     if (htmlBtn) {
@@ -242,6 +251,25 @@ class WebsiteFetcher {
     }
   }
 
+  openFullPage() {
+    if (!this.currentUrl) {
+      alert('No URL loaded');
+      return;
+    }
+
+    // Open a window showing the full proxied page
+    const width = window.innerWidth * 0.9;
+    const height = window.innerHeight * 0.9;
+    const left = (window.innerWidth - width) / 2;
+    const top = (window.innerHeight - height) / 2;
+
+    window.open(
+      `/api/proxy-html?url=${encodeURIComponent(this.currentUrl)}`,
+      'proxied-page',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+  }
+
   downloadScreenshot() {
     if (!this.currentData || !this.currentData.screenshot) {
       alert('No screenshot available');
@@ -284,6 +312,9 @@ class WebsiteFetcher {
             font-size: 12px;
             line-height: 1.5;
           }
+          h1, h2 {
+            color: #333;
+          }
         </style>
       </head>
       <body>
@@ -295,18 +326,6 @@ class WebsiteFetcher {
       </html>
     `);
     htmlWindow.document.close();
-  }
-
-  downloadScreenshot() {
-    if (!this.currentData || !this.currentData.screenshot) {
-      alert('No screenshot available');
-      return;
-    }
-
-    const link = document.createElement('a');
-    link.href = `data:image/png;base64,${this.currentData.screenshot}`;
-    link.download = `screenshot-${Date.now()}.png`;
-    link.click();
   }
 
   clear() {
