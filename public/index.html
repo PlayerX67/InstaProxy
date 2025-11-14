@@ -1,0 +1,68 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Fetcher</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            margin: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>High-Fidelity Website Fetcher</h1>
+    <p>Enter a URL below. It will open in a new tab with full functionality.</p>
+    
+    <form id="fetchForm">
+        <input type="text" id="urlInput" placeholder="https://example.com" required>
+        <button type="submit">Fetch & Open</button>
+    </form>
+
+    <script>
+        document.getElementById('fetchForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const url = document.getElementById('urlInput').value;
+            const apiUrl = `/fetch?url=${encodeURIComponent(url)}`;
+            
+            // Open a new tab immediately for better user feedback
+            const newTab = window.open('about:blank', '_blank');
+            
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                const html = await response.text();
+                
+                // Write the fetched HTML to the new tab
+                newTab.document.write(html);
+                newTab.document.close(); // Important: closes the write stream
+                
+            } catch (error) {
+                console.error('Fetch failed:', error);
+                newTab.close(); // Close the tab on error
+                alert('Failed to fetch the website. Please check the URL and try again.');
+            }
+        });
+    </script>
+</body>
+</html>
