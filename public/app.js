@@ -86,10 +86,6 @@ class WebsiteFetcher {
               <span class="action-btn-icon">🌍</span>
               View Full Page
             </button>
-            <button class="action-btn" id="htmlBtn">
-              <span class="action-btn-icon">📄</span>
-              View HTML
-            </button>
             <button class="action-btn" id="refreshBtn">
               <span class="action-btn-icon">🔄</span>
               Re-render
@@ -111,8 +107,8 @@ class WebsiteFetcher {
           <div class="empty-icon">🌍</div>
           <div class="empty-title">Website Fetcher</div>
           <div class="empty-description">
-            Enter any URL above to fetch and render websites with full interactivity and functionality.
-            Everything works perfectly—forms, scripts, navigation, and more.
+            Enter any URL above to fetch and render websites with perfect fidelity.
+            Screenshot preview, then view the fully functional live version.
           </div>
         </div>
       `;
@@ -124,7 +120,7 @@ class WebsiteFetcher {
           <div class="loading-spinner"></div>
           <div class="loading-text">
             <p>Rendering website...</p>
-            <p style="font-size: 12px;">Loading with full interactivity</p>
+            <p style="font-size: 12px;">Taking screenshot with full rendering</p>
           </div>
         </div>
       `;
@@ -153,7 +149,6 @@ class WebsiteFetcher {
     const copyUrlBtn = document.getElementById('copyUrlBtn');
     const screenshotBtn = document.getElementById('screenshotBtn');
     const openFullPageBtn = document.getElementById('openFullPageBtn');
-    const htmlBtn = document.getElementById('htmlBtn');
     const refreshBtn = document.getElementById('refreshBtn');
     const clearBtn = document.getElementById('clearBtn');
 
@@ -189,10 +184,6 @@ class WebsiteFetcher {
       openFullPageBtn.addEventListener('click', () => this.openFullPage());
     }
 
-    if (htmlBtn) {
-      htmlBtn.addEventListener('click', () => this.viewHTML());
-    }
-
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => this.fetchWebsite());
     }
@@ -211,7 +202,6 @@ class WebsiteFetcher {
       return;
     }
 
-    // Add protocol if missing
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
@@ -251,23 +241,42 @@ class WebsiteFetcher {
     }
   }
 
-  openFullPage() {
+  async openFullPage() {
     if (!this.currentUrl) {
       alert('No URL loaded');
       return;
     }
 
-    // Open a window showing the full proxied page
-    const width = window.innerWidth * 0.9;
-    const height = window.innerHeight * 0.9;
-    const left = (window.innerWidth - width) / 2;
-    const top = (window.innerHeight - height) / 2;
+    try {
+      const response = await fetch('/api/open-page', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: this.currentUrl,
+        }),
+      });
 
-    window.open(
-      `/api/proxy-html?url=${encodeURIComponent(this.currentUrl)}`,
-      'proxied-page',
-      `width=${width},height=${height},left=${left},top=${top}`
-    );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to open page');
+      }
+
+      const width = window.innerWidth * 0.9;
+      const height = window.innerHeight * 0.9;
+      const left = (window.innerWidth - width) / 2;
+      const top = (window.innerHeight - height) / 2;
+
+      window.open(
+        data.proxyUrl,
+        'proxied-page',
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    }
   }
 
   downloadScreenshot() {
@@ -282,52 +291,6 @@ class WebsiteFetcher {
     link.click();
   }
 
-  viewHTML() {
-    if (!this.currentData || !this.currentData.html) {
-      alert('No HTML available');
-      return;
-    }
-
-    const htmlWindow = window.open();
-    htmlWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>HTML - ${this.currentData.title}</title>
-        <style>
-          body {
-            font-family: 'Monaco', monospace;
-            padding: 20px;
-            background: #f5f5f5;
-          }
-          pre {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            overflow-x: auto;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          }
-          code {
-            color: #24292e;
-            font-size: 12px;
-            line-height: 1.5;
-          }
-          h1, h2 {
-            color: #333;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>${this.currentData.title}</h1>
-        <p><strong>URL:</strong> ${this.currentUrl}</p>
-        <h2>HTML Source</h2>
-        <pre><code>${this.escapeHtml(this.currentData.html)}</code></pre>
-      </body>
-      </html>
-    `);
-    htmlWindow.document.close();
-  }
-
   clear() {
     this.currentUrl = '';
     this.currentData = null;
@@ -335,12 +298,6 @@ class WebsiteFetcher {
     this.render();
     this.attachEventListeners();
     document.getElementById('urlInput').focus();
-  }
-
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   formatBytes(bytes) {
@@ -352,7 +309,6 @@ class WebsiteFetcher {
   }
 }
 
-// Initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     new WebsiteFetcher();
