@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Proxy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .input-section {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .url-form {
+            display: flex;
+            gap: 10px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .url-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .btn {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .content-section {
+            padding: 30px;
+            min-height: 500px;
+        }
+
+        .iframe-container {
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            background: white;
+        }
+
+        #proxyFrame {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #6c757d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #bee5eb;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .feature {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+
+        .feature h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .url-form {
+                flex-direction: column;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            #proxyFrame {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 Web Proxy</h1>
+            <p>Browse the web securely through our proxy server</p>
+        </div>
+
+        <div class="input-section">
+            <form class="url-form" id="proxyForm">
+                <input 
+                    type="url" 
+                    class="url-input" 
+                    id="urlInput" 
+                    placeholder="Enter website URL (e.g., https://example.com)" 
+                    required
+                >
+                <button type="submit" class="btn">Browse</button>
+            </form>
+        </div>
+
+        <div class="content-section">
+            <div class="info-box">
+                <strong>Tip:</strong> Enter any website URL above to browse through the proxy. Some sites may not work perfectly due to content security policies.
+            </div>
+
+            <div id="loading" class="loading" style="display: none;">
+                <p>Loading content through proxy...</p>
+            </div>
+
+            <div id="error" class="error" style="display: none;"></div>
+
+            <div class="iframe-container">
+                <iframe id="proxyFrame" src="about:blank"></iframe>
+            </div>
+
+            <div class="features">
+                <div class="feature">
+                    <h3>🛡️ Privacy</h3>
+                    <p>Browse anonymously through our secure proxy server</p>
+                </div>
+                <div class="feature">
+                    <h3>⚡ Fast</h3>
+                    <p>Optimized for quick loading and smooth browsing</p>
+                </div>
+                <div class="feature">
+                    <h3>🔒 Secure</h3>
+                    <p>Encrypted connection between you and the proxy</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('proxyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const urlInput = document.getElementById('urlInput').value.trim();
+            
+            if (!urlInput) {
+                showError('Please enter a URL');
+                return;
+            }
+
+            // Validate URL format
+            try {
+                new URL(urlInput);
+            } catch {
+                showError('Please enter a valid URL (including http:// or https://)');
+                return;
+            }
+
+            loadUrl(urlInput);
+        });
+
+        function loadUrl(url) {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const iframe = document.getElementById('proxyFrame');
+            
+            // Show loading, hide error
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            iframe.style.display = 'none';
+
+            // Encode the URL for the proxy
+            const proxyUrl = `/proxy?url=${encodeURIComponent(url)}`;
+            
+            // Set iframe source after a small delay to show loading state
+            setTimeout(() => {
+                iframe.src = proxyUrl;
+                iframe.style.display = 'block';
+                loading.style.display = 'none';
+                
+                // Handle iframe load errors
+                iframe.onerror = function() {
+                    showError('Failed to load the website. It may be blocking proxy access.');
+                    iframe.style.display = 'none';
+                    loading.style.display = 'none';
+                };
+                
+                iframe.onload = function() {
+                    loading.style.display = 'none';
+                };
+            }, 500);
+        }
+
+        function showError(message) {
+            const error = document.getElementById('error');
+            const iframe = document.getElementById('proxyFrame');
+            const loading = document.getElementById('loading');
+            
+            error.textContent = message;
+            error.style.display = 'block';
+            loading.style.display = 'none';
+            iframe.style.display = 'none';
+        }
+
+        // Load a default page or instructions
+        window.addEventListener('load', function() {
+            document.getElementById('proxyFrame').srcdoc = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Web Proxy</title>
+                    <style>
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            padding: 40px; 
+                            text-align: center; 
+                            color: #333;
+                        }
+                        .container {
+                            max-width: 600px;
+                            margin: 0 auto;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>Welcome to Web Proxy</h1>
+                        <p>Enter a URL in the input field above to start browsing through the proxy.</p>
+                        <p>Try visiting: <code>https://example.com</code></p>
+                    </div>
+                </body>
+                </html>
+            `;
+        });
+    </script>
+</body>
+</html>
