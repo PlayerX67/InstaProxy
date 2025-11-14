@@ -1,3 +1,5 @@
+importScripts('/proxy.config.js');  // Load config
+
 addEventListener('install', event => {
   self.skipWaiting();
 });
@@ -12,8 +14,6 @@ addEventListener('fetch', event => {
 
   if (url.pathname.startsWith(self.__proxy$config.prefix)) {
     event.respondWith(proxyRequest(req, url));
-  } else if (url.pathname === self.__proxy$config.sw) {
-    event.respondWith(self.registration.scope);
   } else {
     event.respondWith(fetch(req));
   }
@@ -21,9 +21,14 @@ addEventListener('fetch', event => {
 
 async function proxyRequest(req, url) {
   const targetPath = url.pathname.slice(self.__proxy$config.prefix.length);
-  const targetUrl = self.__proxy$config.decodeUrl(targetPath);
+  let targetUrl = self.__proxy$config.decodeUrl(targetPath);
 
-  // Fetch the original content
+  // Handle relative paths in subrequests
+  if (!targetUrl.startsWith('http')) {
+    // Reconstruct from referrer (simplified; use req.referrer in prod)
+    targetUrl = new URL(targetUrl, 'https://example.com').href;  // Placeholder; enhance with actual base
+  }
+
   const originReq = new Request(targetUrl, {
     method: req.method,
     headers: req.headers,
@@ -33,16 +38,18 @@ async function proxyRequest(req, url) {
 
   const originRes = await fetch(originReq);
 
-  // Rewrite response (inspired by Scramjet rewriter snippets)
-  const contentType = originRes.headers.get('content-type') || '';
   let body = await originRes.blob();
+  const contentType = originRes.headers.get('content-type') || '';
 
   if (contentType.includes('text/html')) {
-    body = await rewriteHtml(await body.text());
+    const text = await body.text();
+    body = new Blob([rewriteHtml(text)], { type: 'text/html' });
   } else if (contentType.includes('javascript')) {
-    body = rewriteJs(await body.text());
+    const text = await body.text();
+    body = new Blob([rewriteJs(text)], { type: 'application/javascript' });
   } else if (contentType.includes('css')) {
-    body = rewriteCss(await body.text());
+    const text = await body.text();
+    body = new Blob([rewriteCss(text)], { type: 'text/css' });
   }
 
   return new Response(body, {
@@ -52,18 +59,29 @@ async function proxyRequest(req, url) {
   });
 }
 
-// Simple rewriters (original, inspired by Scramjet/UV rewriting logic)
+// Rewriters (original, inspired by Scramjet snippets)
 function rewriteHtml(html) {
-  return html.replace(/src="([^"]*)"/g, (match, src) => `src="${self.__proxy$config.prefix}${self.__proxy$config.encodeUrl(src)}"`)
-             .replace(/href="([^"]*)"/g, (match, href) => `href="${self.__proxy$config.prefix}${self.__proxy$config.encodeUrl(href)}"`);
+  const prefix = self.__proxy$config.prefix;
+  return html.replace(/(src|href)=["']([^"']+)["']/g, (match, attr, src) => {
+    if (src.startsWith('http') || src.startsWith('//')) return match;
+    const encoded = self.__proxy$config.encodeUrl(src);
+    return `${attr}="${prefix}${encoded}"`;
+  });
 }
 
 function rewriteJs(js) {
-  // Basic URL rewrite in JS
-  return js.replace(/location.href/g, 'proxyLocationHref');
-  // Add more sophisticated rewriting as needed
+  // Basic JS rewrite (e.g., replace fetch URLs; expandable)
+  return js.replace(/fetch\(['"]([^'"]+)['"]\)/g, (match, url) => {
+    if (url.startsWith('http')) return match;
+    return `fetch('${self.__proxy$config.prefix}${self.__proxy$config.encodeUrl(url)}')`;
+  });
 }
 
 function rewriteCss(css) {
-  return css.replace(/url\(([^)]*)\)/g, (match, url) => `url(${self.__proxy$config.prefix}${self.__proxy$config.encodeUrl(url)})`);
+  const prefix = self.__proxy$config.prefix;
+  return css.replace(/url\(['"]?([^'")]+)['"]?\)/g, (match, url) => {
+    if (url.startsWith('http') || url.startsWith('//')) return match;
+    const encoded = self.__proxy$config.encodeUrl(url);
+    return `url(${prefix}${encoded})`;
+  });
 }
