@@ -1,11 +1,11 @@
-FROM ghcr.io/puppeteer/puppeteer:21.6.1
+FROM ghcr.io/puppeteer/puppeteer:24.15.0
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies - use npm install if no lockfile exists
+# Install dependencies
 RUN npm install --omit=dev
 
 # Copy application files
