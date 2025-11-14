@@ -1,17 +1,17 @@
 {
   "name": "website-fetcher-proxy",
   "version": "1.0.0",
-  "description": "A web proxy with a beautiful frontend for fetching and rendering websites in a new tab.",
-  "main": "app.js",
+  "description": "Beautiful web proxy – Render ready",
+  "main": "server.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
     "unblocker": "^2.3.0"
   },
   "engines": {
-    "node": ">=16.x"
+    "node": ">=18.x"
   },
   "license": "AGPL-3.0"
 }
