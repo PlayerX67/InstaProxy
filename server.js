@@ -88,12 +88,16 @@ app.post('/fetch', async (req, res) => {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     });
 
-    const page = await browser.newPage();
-    
-    // Set a realistic user agent
-    await page.setUserAgent(
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-    );
+const page = await browser.newPage();
+
+// Set a realistic user agent
+await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+
+// Set a common viewport to appear more like a regular user
+await page.setViewport({ width: 1280, height: 720 });
+
+// Then navigate to the page
+await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // Set viewport to a common desktop size
     await page.setViewport({ width: 1280, height: 720 });
@@ -103,7 +107,7 @@ app.post('/fetch', async (req, res) => {
       await page.goto(url, { 
         waitUntil: waitUntil,
         timeout: timeout 
-      });
+      }); 
     } catch (navError) {
       console.warn(`Navigation warning for ${url}:`, navError.message);
       // Continue even with navigation timeout - we'll get whatever loaded
