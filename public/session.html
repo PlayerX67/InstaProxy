@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Session - Rammerhead Proxy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+        }
+        
+        .session-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .session-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .session-url {
+            word-break: break-all;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #e1e5e9;
+        }
+        
+        .back-btn {
+            display: inline-block;
+            margin-top: 15px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🌐</div>
+            <h1>Create Proxy Session</h1>
+            <p class="subtitle">Start a new browsing session with enhanced privacy</p>
+        </div>
+        
+        <div class="session-controls">
+            <input type="text" id="urlInput" placeholder="Enter website URL (e.g., https://example.com)" value="https://www.wikipedia.org">
+            <button onclick="createSession()">Create Session</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            Creating secure session... Please wait
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="session-info" id="sessionInfo">
+            <h3>✅ Session Created Successfully!</h3>
+            <p>Your secure browsing session is ready. Use the link below:</p>
+            <div class="session-url" id="sessionUrl"></div>
+            <a href="#" class="back-btn" onclick="goHome()">← Back to Home</a>
+        </div>
+    </div>
+
+    <script>
+        function createSession() {
+            const urlInput = document.getElementById('urlInput');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const sessionInfo = document.getElementById('sessionInfo');
+            const sessionUrl = document.getElementById('sessionUrl');
+            
+            // Reset displays
+            error.style.display = 'none';
+            sessionInfo.style.display = 'none';
+            loading.style.display = 'block';
+            
+            fetch('/session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    const targetUrl = urlInput.value || 'https://www.wikipedia.org';
+                    const fullUrl = `${window.location.origin}${data.sessionUrl}?__rh_blank=${encodeURIComponent(targetUrl)}`;
+                    
+                    sessionUrl.innerHTML = `<a href="${fullUrl}" target="_blank">${fullUrl}</a>`;
+                    sessionInfo.style.display = 'block';
+                    
+                    // Auto-redirect after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = fullUrl;
+                    }, 2000);
+                } else {
+                    showError(data.error || 'Failed to create session');
+                }
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                showError('Network error: ' + err.message);
+            });
+        }
+        
+        function showError(message) {
+            const error = document.getElementById('error');
+            error.textContent = message;
+            error.style.display = 'block';
+        }
+        
+        function goHome() {
+            window.location.href = '/';
+        }
+        
+        // Allow pressing Enter to create session
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                createSession();
+            }
+        });
+    </script>
+</body>
+</html>
