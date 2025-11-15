@@ -64,7 +64,6 @@ app.get('/proxy', async (req, res) => {
   }
 });
 
-// Enhanced fetch endpoint with resource rewriting
 app.post('/fetch', async (req, res) => {
   const { url } = req.body;
 
@@ -72,44 +71,50 @@ app.post('/fetch', async (req, res) => {
     return res.status(400).json({ error: 'Valid URL is required (with http/https)' });
   }
 
- const browser = await puppeteer.launch({
-  headless: 'new',
-  args: [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-accelerated-2d-canvas',
-    '--no-first-run',
-    '--no-zygote',
-    '--single-process',
-    '--disable-gpu'
-  ]
-});
-
+  // Declare browser ONCE here
   let browser;
+
   try {
     console.log(`Fetching: ${url}`);
-    browser = await puppeteer.launch(launchOptions);
-    const page = await browser.newPage();
+    
+    // Remove 'let' here - just assign to the existing variable
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-web-security',
+        '--window-size=1280,720'
+      ]
+    });
 
-    // Set realistic browser characteristics
+    const page = await browser.newPage();
+    
+    // Set user agent and viewport
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
-    // Navigate and wait for full load
+    // Navigate to page
     await page.goto(url, {
       waitUntil: 'networkidle2',
       timeout: 45000
     });
 
-    // Get the fully rendered HTML
+    // Get content and rewrite URLs
     let content = await page.content();
     const finalUrl = page.url();
     const title = await page.title();
 
     await browser.close();
+    browser = null; // Clear the reference
 
-    // Rewrite all resource URLs to go through our proxy
+    // Rewrite resource URLs (your existing code)
     content = await rewriteResourceUrls(content, finalUrl);
 
     res.json({
@@ -122,7 +127,12 @@ app.post('/fetch', async (req, res) => {
 
   } catch (error) {
     console.error('Fetch error:', error);
-    if (browser) await browser.close();
+    
+    // Make sure to close browser in error case too
+    if (browser) {
+      await browser.close();
+      browser = null;
+    }
 
     res.status(500).json({
       success: false,
