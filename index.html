@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Fetcher</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Website Fetcher</h1>
+            <p>Enter any URL to fetch and display the website</p>
+        </header>
+
+        <div class="input-section">
+            <form id="fetch-form">
+                <input 
+                    type="url" 
+                    id="url-input" 
+                    placeholder="https://example.com" 
+                    required
+                >
+                <button type="submit" id="fetch-btn">Fetch Website</button>
+            </form>
+        </div>
+
+        <div class="warning">
+            <strong>Note:</strong> Some content may not load due to security restrictions.
+        </div>
+
+        <div id="loading" class="hidden">
+            <div class="spinner"></div>
+            <p>Fetching website...</p>
+        </div>
+
+        <div id="result" class="hidden">
+            <div class="result-header">
+                <h3>Preview</h3>
+                <button id="close-btn">Close</button>
+            </div>
+            <iframe 
+                id="preview-frame"
+                title="website-preview"
+                sandbox="allow-scripts allow-same-origin"
+            ></iframe>
+        </div>
+
+        <div id="error" class="hidden">
+            <p>Error: <span id="error-message"></span></p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
