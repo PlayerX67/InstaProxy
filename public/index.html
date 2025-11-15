@@ -254,6 +254,8 @@ function loadUrl(url) {
     const error = document.getElementById('error');
     const iframe = document.getElementById('proxyFrame');
     
+    console.log('Loading URL:', url);
+    
     // Show loading, hide error and iframe
     loading.style.display = 'block';
     error.style.display = 'none';
@@ -262,30 +264,54 @@ function loadUrl(url) {
     // Set iframe source to our proxy endpoint
     const proxyUrl = `/proxy?url=${encodeURIComponent(url)}`;
     
-    // Set iframe source after a small delay to show loading state
-    setTimeout(() => {
-        iframe.src = proxyUrl;
-        iframe.style.display = 'block';
-        loading.style.display = 'none';
-        
-        // Handle iframe load
-        iframe.onload = function() {
-            loading.style.display = 'none';
-            // Update URL input to show current page
-            try {
-                const iframeUrl = iframe.contentWindow.location.href;
-                document.getElementById('urlInput').value = url;
-            } catch (e) {
-                // Cross-origin restriction, ignore
-            }
-        };
-        
-        iframe.onerror = function() {
-            showError('Failed to load the website. It may be blocking proxy access.');
+    console.log('Proxy URL:', proxyUrl);
+    
+    // Clear previous iframe content
+    iframe.srcdoc = '';
+    
+    // Set iframe source
+    iframe.src = proxyUrl;
+    iframe.style.display = 'block';
+    
+    // Set a timeout to detect if iframe fails to load
+    const loadTimeout = setTimeout(() => {
+        if (loading.style.display !== 'none') {
+            console.log('Load timeout reached');
+            showError('The website is taking too long to load. It may be blocking proxy requests.');
             iframe.style.display = 'none';
             loading.style.display = 'none';
-        };
-    }, 500);
+        }
+    }, 10000); // 10 second timeout
+    
+    // Handle iframe load
+    iframe.onload = function() {
+        console.log('Iframe loaded successfully');
+        clearTimeout(loadTimeout);
+        loading.style.display = 'none';
+        
+        // Update URL input to show current page
+        document.getElementById('urlInput').value = url;
+        
+        // Check if iframe contains an error page by looking for specific elements
+        try {
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            const errorElements = iframeDoc.querySelectorAll('[id*="error"], [class*="error"]');
+            if (errorElements.length > 0) {
+                console.log('Error elements detected in iframe');
+            }
+        } catch (e) {
+            // Cross-origin restriction, ignore
+            console.log('Cannot access iframe content due to security restrictions');
+        }
+    };
+    
+    iframe.onerror = function() {
+        console.log('Iframe load error');
+        clearTimeout(loadTimeout);
+        showError('Failed to load the website. It may be blocking proxy access or there may be a network issue.');
+        iframe.style.display = 'none';
+        loading.style.display = 'none';
+    };
 }
 
 function showError(message) {
@@ -293,14 +319,29 @@ function showError(message) {
     const iframe = document.getElementById('proxyFrame');
     const loading = document.getElementById('loading');
     
+    console.log('Showing error:', message);
+    
     error.textContent = message;
     error.style.display = 'block';
     loading.style.display = 'none';
     iframe.style.display = 'none';
 }
 
-// Load a default page or instructions
+// Test the debug endpoint on load
 window.addEventListener('load', function() {
+    console.log('Page loaded, testing debug endpoint...');
+    
+    // Test if backend is responsive
+    fetch('/debug')
+        .then(response => response.json())
+        .then(data => {
+            console.log('Debug endpoint response:', data);
+        })
+        .catch(error => {
+            console.error('Debug endpoint failed:', error);
+        });
+        
+    // Load welcome message in iframe
     document.getElementById('proxyFrame').srcdoc = `
         <!DOCTYPE html>
         <html>
@@ -340,14 +381,31 @@ window.addEventListener('load', function() {
                     border-radius: 4px;
                     font-family: monospace;
                 }
+                .test-links {
+                    margin: 20px 0;
+                }
+                .test-links a {
+                    display: inline-block;
+                    margin: 5px;
+                    padding: 8px 16px;
+                    background: #3498db;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 5px;
+                }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>🚀 Web Proxy Ready!</h1>
-                <p>Enter a URL in the input field above to start browsing through the proxy.</p>
-                <p>Try visiting: <code>https://example.com</code> or <code>https://httpbin.org/html</code></p>
+                <p>Enter a URL above or try one of these test sites:</p>
+                <div class="test-links">
+                    <a href="javascript:void(0)" onclick="parent.loadUrl('https://example.com')">example.com</a>
+                    <a href="javascript:void(0)" onclick="parent.loadUrl('https://httpbin.org/html')">httpbin.org/html</a>
+                    <a href="javascript:void(0)" onclick="parent.loadUrl('https://jsonplaceholder.typicode.com')">jsonplaceholder.typicode.com</a>
+                </div>
                 <p><small>Some websites may block proxy access due to security policies.</small></p>
+                <p><small>Check the browser console for detailed debugging information.</small></p>
             </div>
         </body>
         </html>
