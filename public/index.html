@@ -3,54 +3,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Website Fetcher</title>
-    <link rel="stylesheet" href="style.css">
+    <title>InstaProxy</title>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0;
+            background: white;
+            min-height: 100vh;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        #url-input {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        #fetch-btn {
+            padding: 12px 24px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        #fetch-btn:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+        }
+        .preview-container {
+            width: 100%;
+            height: calc(100vh - 80px);
+            border: none;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+        .error {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            margin: 10px;
+            border-radius: 6px;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>Website Fetcher</h1>
-            <p>Enter any URL to fetch and display the website</p>
-        </header>
-
-        <div class="input-section">
-            <form id="fetch-form">
+        <div class="header">
+            <div class="input-group">
                 <input 
                     type="url" 
                     id="url-input" 
                     placeholder="https://example.com" 
-                    required
+                    value="https://render.com"
                 >
-                <button type="submit" id="fetch-btn">Fetch Website</button>
-            </form>
-        </div>
-
-        <div class="warning">
-            <strong>Note:</strong> Some content may not load due to security restrictions.
-        </div>
-
-        <div id="loading" class="hidden">
-            <div class="spinner"></div>
-            <p>Fetching website...</p>
-        </div>
-
-        <div id="result" class="hidden">
-            <div class="result-header">
-                <h3>Preview</h3>
-                <button id="close-btn">Close</button>
+                <button id="fetch-btn">Unblock Website</button>
             </div>
-            <iframe 
-                id="preview-frame"
-                title="website-preview"
-                sandbox="allow-scripts allow-same-origin"
-            ></iframe>
         </div>
-
-        <div id="error" class="hidden">
-            <p>Error: <span id="error-message"></span></p>
+        
+        <div id="loading" class="loading hidden">
+            <h3>Unblocking Target Website...</h3>
+            <p>This may take up to 30 seconds</p>
         </div>
+        
+        <div id="error" class="error hidden"></div>
+        
+        <iframe 
+            id="preview-frame"
+            class="preview-container"
+            title="website-preview"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+        ></iframe>
     </div>
 
-    <script src="script.js"></script>
+    <script>
+        class TrueBrowserRenderer {
+            constructor() {
+                this.apiBase = window.location.origin;
+                this.urlInput = document.getElementById('url-input');
+                this.fetchBtn = document.getElementById('fetch-btn');
+                this.loading = document.getElementById('loading');
+                this.error = document.getElementById('error');
+                this.previewFrame = document.getElementById('preview-frame');
+                
+                this.fetchBtn.addEventListener('click', () => this.fetchWebsite());
+                this.urlInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.fetchWebsite();
+                });
+            }
+
+            async fetchWebsite() {
+                const url = this.urlInput.value.trim();
+                if (!url) return;
+
+                this.showLoading();
+                this.hideError();
+
+                try {
+                    const response = await fetch(`${this.apiBase}/fetch`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.error || `HTTP ${response.status}`);
+                    }
+
+                    if (!data.success) {
+                        throw new Error(data.message || 'Unknown error');
+                    }
+
+                    // Use the iframe's built-in navigation for true browser rendering
+                    const blob = new Blob([data.content], { type: 'text/html' });
+                    const blobUrl = URL.createObjectURL(blob);
+                    this.previewFrame.src = blobUrl;
+
+                } catch (error) {
+                    this.showError(`Failed to render: ${error.message}`);
+                } finally {
+                    this.hideLoading();
+                }
+            }
+
+            showLoading() {
+                this.loading.classList.remove('hidden');
+                this.fetchBtn.disabled = true;
+                this.fetchBtn.textContent = 'Rendering...';
+            }
+
+            hideLoading() {
+                this.loading.classList.add('hidden');
+                this.fetchBtn.disabled = false;
+                this.fetchBtn.textContent = 'Render Website';
+            }
+
+            showError(message) {
+                this.error.textContent = message;
+                this.error.classList.remove('hidden');
+            }
+
+            hideError() {
+                this.error.classList.add('hidden');
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new TrueBrowserRenderer();
+        });
+    </script>
 </body>
 </html>
