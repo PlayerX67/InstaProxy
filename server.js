@@ -1,134 +1,118 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const pluginStealth = require('puppeteer-extra-plugin-stealth');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const validator = require('validator');
-const path = require('path');
+
+// Use the stealth plugin
+puppeteer.use(pluginStealth());
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security middleware
+// Middleware
 app.use(helmet({
-  contentSecurityPolicy: false, // Disabled for iframe compatibility
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
-
-// CORS configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || "*",
-  credentials: true
-}));
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 10, // limit each IP to 10 requests per windowMs
-  message: {
-    error: 'Too many requests, please try again later.'
-  }
+  windowMs: 1 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/fetch', limiter);
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Serve static files
+app.use(express.static('public'));
 
-// Serve static files (frontend)
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Health check endpoint
+// Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    service: 'Website Fetcher API'
-  });
+  res.status(200).json({ status: 'OK', service: 'Advanced Website Fetcher' });
 });
 
-// Main fetch endpoint
+// Advanced fetch endpoint
 app.post('/fetch', async (req, res) => {
-  const { url, waitUntil = 'networkidle2', timeout = 30000 } = req.body;
+  const { url } = req.body;
 
-  // Validate URL
-  if (!url) {
-    return res.status(400).json({ 
-      error: 'URL is required',
-      example: { "url": "https://example.com" }
-    });
+  if (!url || !validator.isURL(url, { require_protocol: true, protocols: ['http', 'https'] })) {
+    return res.status(400).json({ error: 'Valid URL is required (with http/https)' });
   }
 
-  if (!validator.isURL(url, { 
-    require_protocol: true,
-    protocols: ['http', 'https'] 
-  })) {
-    return res.status(400).json({ 
-      error: 'Invalid URL format. Please include http:// or https://'
-    });
-  }
+  // Configuration for Puppeteer
+  const launchOptions = {
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-web-security',
+      '--disable-features=VizDisplayCompositor',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--window-size=1280,720'
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+  };
 
   let browser;
   try {
-    console.log(`Fetching URL: ${url}`);
-    
-    // Launch Puppeteer with Render-compatible settings
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--single-process'
-      ],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+    console.log(`Launching browser to fetch: ${url}`);
+    browser = await puppeteer.launch(launchOptions);
+    const page = await browser.newPage();
+
+    // 1. Set a realistic, modern User-Agent
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+
+    // 2. Set extra HTTP headers to mimic a real browser
+    await page.setExtraHTTPHeaders({
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://www.google.com/',
     });
 
-const page = await browser.newPage();
+    // 3. Set a realistic viewport
+    await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
-// Set a realistic user agent
-await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+    // 4. Block images and stylesheets for faster loading (optional)
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const resourceType = req.resourceType();
+      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
 
-// Set a common viewport to appear more like a regular user
-await page.setViewport({ width: 1280, height: 720 });
+    // 5. Navigate with a longer timeout and wait for network idle
+    await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
 
-// Then navigate to the page
-await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    // 6. Add a random delay to mimic human reading time (2-5 seconds)
+    await page.waitForTimeout(2000 + Math.random() * 3000);
 
-    // Set viewport to a common desktop size
-    await page.setViewport({ width: 1280, height: 720 });
-
-    // Navigate to the page with error handling
-    try {
-      await page.goto(url, { 
-        waitUntil: waitUntil,
-        timeout: timeout 
-      }); 
-    } catch (navError) {
-      console.warn(`Navigation warning for ${url}:`, navError.message);
-      // Continue even with navigation timeout - we'll get whatever loaded
-    }
-
-    // Wait a bit more for any dynamic content
-    await page.waitForTimeout(2000);
-
-    // Get the fully rendered HTML
+    // 7. Get the fully rendered content
     const content = await page.content();
-    
-    // Get the final URL (after redirects)
     const finalUrl = page.url();
-
-    // Extract page title
     const title = await page.title();
 
-    // Close the browser to free memory
     await browser.close();
 
-    // Send successful response
     res.json({
       success: true,
       url: finalUrl,
@@ -138,84 +122,24 @@ await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     });
 
   } catch (error) {
-    console.error('Error fetching website:', error);
-    
-    // Make sure to close browser if it exists
-    if (browser) {
-      await browser.close();
+    console.error('Advanced fetch error:', error);
+    if (browser) await browser.close();
+
+    let errorMessage = 'Failed to fetch website';
+    if (error.message.includes('net::ERR_ABORTED') || error.message.includes('Navigation failed')) {
+      errorMessage = 'Website blocked the request or resource was aborted';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Website took too long to load';
     }
 
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch website',
-      message: error.message,
-      suggestion: 'The website might be blocking automated requests or taking too long to load.'
-    });
-  }
-});
-
-// Simple fetch endpoint for GET requests (for testing)
-app.get('/fetch', async (req, res) => {
-  const { url } = req.query;
-  
-  if (!url) {
-    return res.redirect('/');
-  }
-
-  try {
-    const response = await fetchWebsite(url);
-    res.json(response);
-  } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch website',
+      error: errorMessage,
       message: error.message
     });
   }
 });
 
-// Serve the main page for all other routes (SPA support)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('Unhandled error:', error);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : error.message
-  });
-});
-
-// Start server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Website Fetcher Server running on port ${PORT}`);
-  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Health check: http://localhost:${PORT}/health`);
+  console.log(`🚀 Advanced Website Fetcher running on port ${PORT}`);
 });
-
-// Helper function for GET endpoint
-async function fetchWebsite(url) {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-
-    const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    const content = await page.content();
-    
-    await browser.close();
-    
-    return {
-      success: true,
-      content: content,
-      fetchedAt: new Date().toISOString()
-    };
-  } catch (error) {
-    if (browser) await browser.close();
-    throw error;
-  }
-}
