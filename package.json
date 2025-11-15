@@ -2,18 +2,18 @@
   "name": "rammerhead-proxy-render",
   "version": "1.0.0",
   "description": "Rammerhead proxy deployment for Render",
-  "main": "server.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node app.js",
     "build": "npm install",
-    "dev": "node server.js"
+    "dev": "node app.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "helmet": "^7.0.0",
     "compression": "^1.7.4",
-    "rammerhead": "^1.2.2",
+    "rammerhead": "^9.2.1",
     "uuid": "^9.0.0"
   },
   "engines": {
