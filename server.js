@@ -1,13 +1,11 @@
 const express = require('express');
-const puppeteer = require('puppeteer-extra');
-const pluginStealth = require('puppeteer-extra-plugin-stealth');
+const puppeteer = require('puppeteer');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const validator = require('validator');
-
-// Use the stealth plugin
-puppeteer.use(pluginStealth());
+const cheerio = require('cheerio');
+const fetch = require('node-fetch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,12 +16,12 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: 10,
+  max: 5, // Reduced for resource-intensive operations
   message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/fetch', limiter);
@@ -31,12 +29,42 @@ app.use('/fetch', limiter);
 // Serve static files
 app.use(express.static('public'));
 
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', service: 'Advanced Website Fetcher' });
+// Resource proxy endpoint - serves CSS, images, fonts, etc.
+app.get('/proxy', async (req, res) => {
+  const { url } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL parameter required' });
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br'
+      },
+      timeout: 30000
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const buffer = await response.buffer();
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('Proxy error for:', url, error.message);
+    res.status(500).send('Failed to fetch resource');
+  }
 });
 
-// Advanced fetch endpoint
+// Enhanced fetch endpoint with resource rewriting
 app.post('/fetch', async (req, res) => {
   const { url } = req.body;
 
@@ -44,7 +72,6 @@ app.post('/fetch', async (req, res) => {
     return res.status(400).json({ error: 'Valid URL is required (with http/https)' });
   }
 
-  // Configuration for Puppeteer
   const launchOptions = {
     headless: 'new',
     args: [
@@ -58,9 +85,6 @@ app.post('/fetch', async (req, res) => {
       '--single-process',
       '--disable-web-security',
       '--disable-features=VizDisplayCompositor',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
       '--window-size=1280,720'
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
@@ -68,50 +92,29 @@ app.post('/fetch', async (req, res) => {
 
   let browser;
   try {
-    console.log(`Launching browser to fetch: ${url}`);
+    console.log(`Fetching: ${url}`);
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
 
-    // 1. Set a realistic, modern User-Agent
+    // Set realistic browser characteristics
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
-
-    // 2. Set extra HTTP headers to mimic a real browser
-    await page.setExtraHTTPHeaders({
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Referer': 'https://www.google.com/',
-    });
-
-    // 3. Set a realistic viewport
     await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
-    // 4. Block images and stylesheets for faster loading (optional)
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const resourceType = req.resourceType();
-      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font') {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
-
-    // 5. Navigate with a longer timeout and wait for network idle
+    // Navigate and wait for full load
     await page.goto(url, {
       waitUntil: 'networkidle2',
       timeout: 45000
     });
 
-    // 6. Add a random delay to mimic human reading time (2-5 seconds)
-    await page.waitForTimeout(2000 + Math.random() * 3000);
-
-    // 7. Get the fully rendered content
-    const content = await page.content();
+    // Get the fully rendered HTML
+    let content = await page.content();
     const finalUrl = page.url();
     const title = await page.title();
 
     await browser.close();
+
+    // Rewrite all resource URLs to go through our proxy
+    content = await rewriteResourceUrls(content, finalUrl);
 
     res.json({
       success: true,
@@ -122,24 +125,69 @@ app.post('/fetch', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Advanced fetch error:', error);
+    console.error('Fetch error:', error);
     if (browser) await browser.close();
-
-    let errorMessage = 'Failed to fetch website';
-    if (error.message.includes('net::ERR_ABORTED') || error.message.includes('Navigation failed')) {
-      errorMessage = 'Website blocked the request or resource was aborted';
-    } else if (error.message.includes('timeout')) {
-      errorMessage = 'Website took too long to load';
-    }
 
     res.status(500).json({
       success: false,
-      error: errorMessage,
+      error: 'Failed to fetch website',
       message: error.message
     });
   }
 });
 
+// Function to rewrite all resource URLs
+async function rewriteResourceUrls(html, baseUrl) {
+  const $ = cheerio.load(html);
+  const base = new URL(baseUrl);
+  
+  // Rewrite CSS links
+  $('link[rel="stylesheet"]').each((i, elem) => {
+    const href = $(elem).attr('href');
+    if (href && !href.startsWith('data:')) {
+      const absoluteUrl = new URL(href, base).toString();
+      $(elem).attr('href', `/proxy?url=${encodeURIComponent(absoluteUrl)}`);
+    }
+  });
+
+  // Rewrite images
+  $('img').each((i, elem) => {
+    const src = $(elem).attr('src');
+    if (src && !src.startsWith('data:')) {
+      const absoluteUrl = new URL(src, base).toString();
+      $(elem).attr('src', `/proxy?url=${encodeURIComponent(absoluteUrl)}`);
+    }
+  });
+
+  // Rewrite scripts
+  $('script[src]').each((i, elem) => {
+    const src = $(elem).attr('src');
+    if (src && !src.startsWith('data:')) {
+      const absoluteUrl = new URL(src, base).toString();
+      $(elem).attr('src', `/proxy?url=${encodeURIComponent(absoluteUrl)}`);
+    }
+  });
+
+  // Rewrite inline styles with URLs
+  $('[style]').each((i, elem) => {
+    let style = $(elem).attr('style');
+    style = style.replace(/url\(['"]?([^'")]+)['"]?\)/g, (match, url) => {
+      if (!url.startsWith('data:')) {
+        const absoluteUrl = new URL(url, base).toString();
+        return `url('/proxy?url=${encodeURIComponent(absoluteUrl)}')`;
+      }
+      return match;
+    });
+    $(elem).attr('style', style);
+  });
+
+  // Update base URL to maintain relative paths
+  $('base').remove();
+  $('head').prepend(`<base href="${baseUrl}">`);
+
+  return $.html();
+}
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Advanced Website Fetcher running on port ${PORT}`);
+  console.log(`🚀 True Browser Rendering Server running on port ${PORT}`);
 });
