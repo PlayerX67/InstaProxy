@@ -223,99 +223,136 @@
     </div>
 
     <script>
-        document.getElementById('proxyForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const urlInput = document.getElementById('urlInput').value.trim();
-            
-            if (!urlInput) {
-                showError('Please enter a URL');
-                return;
-            }
+document.getElementById('proxyForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const urlInput = document.getElementById('urlInput').value.trim();
+    
+    if (!urlInput) {
+        showError('Please enter a URL');
+        return;
+    }
 
-            // Validate URL format
-            try {
-                new URL(urlInput);
-            } catch {
-                showError('Please enter a valid URL (including http:// or https://)');
-                return;
-            }
+    // Ensure URL has protocol
+    let processedUrl = urlInput;
+    if (!processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
+        processedUrl = 'https://' + processedUrl;
+    }
 
-            loadUrl(urlInput);
-        });
+    // Validate URL format
+    try {
+        new URL(processedUrl);
+    } catch {
+        showError('Please enter a valid URL');
+        return;
+    }
 
-        function loadUrl(url) {
-            const loading = document.getElementById('loading');
-            const error = document.getElementById('error');
-            const iframe = document.getElementById('proxyFrame');
-            
-            // Show loading, hide error
-            loading.style.display = 'block';
-            error.style.display = 'none';
-            iframe.style.display = 'none';
+    loadUrl(processedUrl);
+});
 
-            // Encode the URL for the proxy
-            const proxyUrl = `/proxy?url=${encodeURIComponent(url)}`;
-            
-            // Set iframe source after a small delay to show loading state
-            setTimeout(() => {
-                iframe.src = proxyUrl;
-                iframe.style.display = 'block';
-                loading.style.display = 'none';
-                
-                // Handle iframe load errors
-                iframe.onerror = function() {
-                    showError('Failed to load the website. It may be blocking proxy access.');
-                    iframe.style.display = 'none';
-                    loading.style.display = 'none';
-                };
-                
-                iframe.onload = function() {
-                    loading.style.display = 'none';
-                };
-            }, 500);
-        }
+function loadUrl(url) {
+    const loading = document.getElementById('loading');
+    const error = document.getElementById('error');
+    const iframe = document.getElementById('proxyFrame');
+    
+    // Show loading, hide error and iframe
+    loading.style.display = 'block';
+    error.style.display = 'none';
+    iframe.style.display = 'none';
 
-        function showError(message) {
-            const error = document.getElementById('error');
-            const iframe = document.getElementById('proxyFrame');
-            const loading = document.getElementById('loading');
-            
-            error.textContent = message;
-            error.style.display = 'block';
+    // Set iframe source to our proxy endpoint
+    const proxyUrl = `/proxy?url=${encodeURIComponent(url)}`;
+    
+    // Set iframe source after a small delay to show loading state
+    setTimeout(() => {
+        iframe.src = proxyUrl;
+        iframe.style.display = 'block';
+        loading.style.display = 'none';
+        
+        // Handle iframe load
+        iframe.onload = function() {
             loading.style.display = 'none';
+            // Update URL input to show current page
+            try {
+                const iframeUrl = iframe.contentWindow.location.href;
+                document.getElementById('urlInput').value = url;
+            } catch (e) {
+                // Cross-origin restriction, ignore
+            }
+        };
+        
+        iframe.onerror = function() {
+            showError('Failed to load the website. It may be blocking proxy access.');
             iframe.style.display = 'none';
-        }
+            loading.style.display = 'none';
+        };
+    }, 500);
+}
 
-        // Load a default page or instructions
-        window.addEventListener('load', function() {
-            document.getElementById('proxyFrame').srcdoc = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Web Proxy</title>
-                    <style>
-                        body { 
-                            font-family: Arial, sans-serif; 
-                            padding: 40px; 
-                            text-align: center; 
-                            color: #333;
-                        }
-                        .container {
-                            max-width: 600px;
-                            margin: 0 auto;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>Welcome to Web Proxy</h1>
-                        <p>Enter a URL in the input field above to start browsing through the proxy.</p>
-                        <p>Try visiting: <code>https://example.com</code></p>
-                    </div>
-                </body>
-                </html>
-            `;
-        });
+function showError(message) {
+    const error = document.getElementById('error');
+    const iframe = document.getElementById('proxyFrame');
+    const loading = document.getElementById('loading');
+    
+    error.textContent = message;
+    error.style.display = 'block';
+    loading.style.display = 'none';
+    iframe.style.display = 'none';
+}
+
+// Load a default page or instructions
+window.addEventListener('load', function() {
+    document.getElementById('proxyFrame').srcdoc = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Web Proxy</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    padding: 40px; 
+                    text-align: center; 
+                    color: #333;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 40px;
+                    border-radius: 15px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                }
+                h1 {
+                    color: #2c3e50;
+                    margin-bottom: 20px;
+                }
+                p {
+                    margin: 15px 0;
+                    line-height: 1.6;
+                }
+                code {
+                    background: #f8f9fa;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-family: monospace;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🚀 Web Proxy Ready!</h1>
+                <p>Enter a URL in the input field above to start browsing through the proxy.</p>
+                <p>Try visiting: <code>https://example.com</code> or <code>https://httpbin.org/html</code></p>
+                <p><small>Some websites may block proxy access due to security policies.</small></p>
+            </div>
+        </body>
+        </html>
+    `;
+});
     </script>
 </body>
 </html>
